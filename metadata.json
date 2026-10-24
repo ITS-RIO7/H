@@ -1,0 +1,6 @@
+{
+  "name": "Floating Ball",
+  "description": "Always-on-top Floating Ball overlay service to instantly switch between apps with auto-clean recents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

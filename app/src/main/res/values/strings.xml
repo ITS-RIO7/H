@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Floating Ball</string>
+    <string name="accessibility_service_desc">Enables Floating Ball to auto-close and clean the active background application from recents when you switch apps.</string>
+</resources>
