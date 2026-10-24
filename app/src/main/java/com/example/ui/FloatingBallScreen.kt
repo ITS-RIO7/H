@@ -282,8 +282,10 @@ fun FloatingBallScreen(
             item {
                 ActiveAppCleanerCard(
                     autoClean = settings.autoCleanActiveApp,
+                    recentsDismissTarget = settings.recentsDismissTarget,
                     isAccessibilityEnabled = isAccessibilityEnabled,
                     onToggleAutoClean = { viewModel.updateAutoCleanActiveApp(it) },
+                    onSelectDismissTarget = { viewModel.updateRecentsDismissTarget(it) },
                     onOpenAccessibility = { viewModel.openAccessibilitySettings(context) }
                 )
             }
@@ -665,8 +667,10 @@ fun GoogleMeetSwitcherCard(
 @Composable
 fun ActiveAppCleanerCard(
     autoClean: Boolean,
+    recentsDismissTarget: String = "right",
     isAccessibilityEnabled: Boolean,
     onToggleAutoClean: (Boolean) -> Unit,
+    onSelectDismissTarget: (String) -> Unit = {},
     onOpenAccessibility: () -> Unit
 ) {
     Card(
@@ -732,11 +736,73 @@ fun ActiveAppCleanerCard(
                     Text("✓", color = EmeraldActive, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Active App You Clicked In: Automatically closed and backed out before switching so recents stays clean.",
+                        text = "Active App You Clicked In: Dismissed and purged from Recents overview before switching.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Recents Card Position Selector (Right / Center / Both)
+            Text(
+                text = "Recents Overview Card to Remove:",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = recentsDismissTarget == "right",
+                    onClick = { onSelectDismissTarget("right") },
+                    label = { Text("Right Card (Default)") },
+                    leadingIcon = if (recentsDismissTarget == "right") {
+                        { Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                    } else null,
+                    modifier = Modifier.testTag("recents_target_right")
+                )
+                FilterChip(
+                    selected = recentsDismissTarget == "center",
+                    onClick = { onSelectDismissTarget("center") },
+                    label = { Text("Center Card") },
+                    leadingIcon = if (recentsDismissTarget == "center") {
+                        { Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                    } else null,
+                    modifier = Modifier.testTag("recents_target_center")
+                )
+                FilterChip(
+                    selected = recentsDismissTarget == "both",
+                    onClick = { onSelectDismissTarget("both") },
+                    label = { Text("Both Cards") },
+                    leadingIcon = if (recentsDismissTarget == "both") {
+                        { Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                    } else null,
+                    modifier = Modifier.testTag("recents_target_both")
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = when (recentsDismissTarget) {
+                        "center" -> "🎯 Target: Overview mein Center card swipe-up karke remove kiya jayega."
+                        "both" -> "🎯 Target: Right aur Center dono cards overview se remove kiye jayenge."
+                        else -> "👉 Target: Overview mein RIGHT card swipe-up karke remove kiya jayega (Recommended)."
+                    },
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))

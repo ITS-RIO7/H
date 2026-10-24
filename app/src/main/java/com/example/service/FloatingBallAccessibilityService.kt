@@ -35,12 +35,13 @@ class FloatingBallAccessibilityService : AccessibilityService() {
         /**
          * Clears BOTH apps from Recents at the exact moment the floating ball is clicked:
          * 1. Floating Ball Launcher App: Purged completely via finishAndRemoveTask().
-         * 2. Active App (the app you were in): Dismissed directly from Recents using ACTION_DISMISS / Upward Swipe.
+         * 2. Active App (the app you were in): Dismissed directly from Recents (Right card by default).
          */
         fun purgeBothAppsFromRecentsAndSwitch(
             targetPackage: String,
             screenWidth: Int,
             screenHeight: Int,
+            targetCard: String = "right",
             onFinished: () -> Unit
         ) {
             // 1. Immediately purge Floating Ball launcher itself from Recents
@@ -66,7 +67,7 @@ class FloatingBallAccessibilityService : AccessibilityService() {
 
             // Wait 350ms for Recents card view to fully animate and become interactive
             Handler(Looper.getMainLooper()).postDelayed({
-                service.dismissActiveAppFromRecents(screenWidth, screenHeight) {
+                service.dismissActiveAppFromRecents(screenWidth, screenHeight, targetCard) {
                     // Wait 180ms after card dismissal completes, then launch Google Meet / Target app
                     Handler(Looper.getMainLooper()).postDelayed({
                         onFinished()
@@ -174,35 +175,82 @@ class FloatingBallAccessibilityService : AccessibilityService() {
         }
     }
 
+    private data class TaskCardCandidate(
+        val node: AccessibilityNodeInfo,
+        val bounds: Rect,
+        val actionId: Int
+    )
+
     /**
      * Dismisses the active app card from Android Recents:
-     * 1. Inspects Recents view for ACTION_DISMISS or "Clear all" buttons.
-     * 2. Executes an upward swipe gesture on the center card.
+     * Targets the RIGHT card by default (as requested: "right vala remove kare"),
+     * or CENTER, or BOTH cards.
      */
     fun dismissActiveAppFromRecents(
         screenWidth: Int,
         screenHeight: Int,
+        targetCard: String = "right",
         onDone: () -> Unit
     ) {
-        var dismissedViaNode = false
+        val width = if (screenWidth > 0) screenWidth else 1080
+        val height = if (screenHeight > 0) screenHeight else 2400
 
-        // 1. Try finding and dismissing via AccessibilityAction.ACTION_DISMISS or Clear button
+        // 1. Collect all task cards that support ACTION_DISMISS
+        val candidates = mutableListOf<TaskCardCandidate>()
         try {
             val root = rootInActiveWindow
             if (root != null) {
-                dismissedViaNode = searchAndDismissRecentsNode(root)
+                collectDismissableTaskCards(root, candidates)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error searching recents nodes: ${e.message}")
         }
 
-        // 2. Perform upward swipe gesture on the center card
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            val width = if (screenWidth > 0) screenWidth else 1080
-            val height = if (screenHeight > 0) screenHeight else 2400
+        var rightTargetX = width * 0.80f
+        var rightTargetY = height * 0.58f
+        var centerTargetX = width * 0.50f
+        var centerTargetY = height * 0.58f
 
-            val startX = width / 2f
-            val startY = height * 0.58f
+        if (candidates.isNotEmpty()) {
+            val rightCandidate = candidates.maxByOrNull { it.bounds.centerX() }
+            val centerCandidate = candidates.minByOrNull { kotlin.math.abs(it.bounds.centerX() - width / 2) }
+
+            if (rightCandidate != null && rightCandidate.bounds.centerX() > 0) {
+                rightTargetX = rightCandidate.bounds.centerX().toFloat()
+                rightTargetY = rightCandidate.bounds.centerY().toFloat().coerceIn(height * 0.3f, height * 0.7f)
+            }
+            if (centerCandidate != null && centerCandidate.bounds.centerX() > 0) {
+                centerTargetX = centerCandidate.bounds.centerX().toFloat()
+                centerTargetY = centerCandidate.bounds.centerY().toFloat().coerceIn(height * 0.3f, height * 0.7f)
+            }
+
+            when (targetCard) {
+                "right" -> {
+                    rightCandidate?.node?.performAction(rightCandidate.actionId)
+                    Log.d(TAG, "Triggered ACTION_DISMISS on right card (centerX=${rightCandidate?.bounds?.centerX()})")
+                }
+                "center" -> {
+                    centerCandidate?.node?.performAction(centerCandidate.actionId)
+                    Log.d(TAG, "Triggered ACTION_DISMISS on center card (centerX=${centerCandidate?.bounds?.centerX()})")
+                }
+                "both" -> {
+                    rightCandidate?.node?.performAction(rightCandidate.actionId)
+                    centerCandidate?.node?.performAction(centerCandidate.actionId)
+                    Log.d(TAG, "Triggered ACTION_DISMISS on both right and center cards")
+                }
+            }
+        }
+
+        // 2. Perform upward swipe gesture on the chosen card (Right card by default)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val startX = when (targetCard) {
+                "center" -> centerTargetX
+                else -> rightTargetX // "right" or "both" flings the right card first
+            }
+            val startY = when (targetCard) {
+                "center" -> centerTargetY
+                else -> rightTargetY
+            }
             val endY = height * 0.05f
 
             val swipePath = Path().apply {
@@ -215,8 +263,14 @@ class FloatingBallAccessibilityService : AccessibilityService() {
 
             val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
-                    Log.d(TAG, "Recents swipe dismiss gesture completed")
-                    onDone()
+                    Log.d(TAG, "Recents swipe dismiss on $targetCard card completed")
+                    if (targetCard == "both") {
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            swipeCenterCard(centerTargetX, centerTargetY, height, onDone)
+                        }, 120)
+                    } else {
+                        onDone()
+                    }
                 }
 
                 override fun onCancelled(gestureDescription: GestureDescription?) {
@@ -226,53 +280,53 @@ class FloatingBallAccessibilityService : AccessibilityService() {
             }, null)
 
             if (!dispatched) {
-                if (dismissedViaNode) {
-                    onDone()
-                } else {
-                    fallbackClose(onDone)
-                }
+                fallbackClose(onDone)
             }
         } else {
             fallbackClose(onDone)
         }
     }
 
-    private fun searchAndDismissRecentsNode(node: AccessibilityNodeInfo?): Boolean {
-        if (node == null) return false
+    private fun swipeCenterCard(
+        startX: Float,
+        startY: Float,
+        screenHeight: Int,
+        onDone: () -> Unit
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val swipePath = Path().apply {
+                moveTo(startX, startY)
+                lineTo(startX, screenHeight * 0.05f)
+            }
+            val stroke = GestureDescription.StrokeDescription(swipePath, 0, 160)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) { onDone() }
+                override fun onCancelled(gestureDescription: GestureDescription?) { onDone() }
+            }, null)
+        } else {
+            onDone()
+        }
+    }
 
-        // Check for ACTION_DISMISS action on task card
+    private fun collectDismissableTaskCards(
+        node: AccessibilityNodeInfo?,
+        outList: MutableList<TaskCardCandidate>
+    ) {
+        if (node == null) return
+
         for (action in node.actionList) {
             if (action.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS.id) {
-                val ok = node.performAction(action.id)
-                if (ok) {
-                    Log.d(TAG, "Dismissed recent task via ACTION_DISMISS")
-                    return true
-                }
-            }
-        }
-
-        // Check for "Clear all" or "Dismiss" text
-        val text = node.text?.toString()?.lowercase() ?: ""
-        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
-        val viewId = node.viewIdResourceName?.lowercase() ?: ""
-
-        if (text.contains("clear all") || text.contains("close all") ||
-            desc.contains("clear all") || desc.contains("close all") ||
-            viewId.contains("clear_all") || viewId.contains("dismiss_task")
-        ) {
-            if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                Log.d(TAG, "Clicked Clear All button in Recents")
-                return true
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                outList.add(TaskCardCandidate(node, bounds, action.id))
+                break
             }
         }
 
         for (i in 0 until node.childCount) {
-            if (searchAndDismissRecentsNode(node.getChild(i))) {
-                return true
-            }
+            collectDismissableTaskCards(node.getChild(i), outList)
         }
-
-        return false
     }
 
     private fun fallbackClose(onDone: () -> Unit) {

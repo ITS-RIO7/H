@@ -331,7 +331,8 @@ class FloatingBallOverlay(
             FloatingBallAccessibilityService.purgeBothAppsFromRecentsAndSwitch(
                 targetPackage = targetPkg,
                 screenWidth = screenWidth,
-                screenHeight = screenHeight
+                screenHeight = screenHeight,
+                targetCard = settings.recentsDismissTarget
             ) {
                 executeLaunch(targetPkg, settings)
             }

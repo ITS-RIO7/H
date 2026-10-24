@@ -17,7 +17,7 @@ on:
         options:
           - debug
 
-# Cancel any previously queued or running runs for the same branch/tag
+# Cancel any previously queued runs for the same branch to save runner capacity
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -29,7 +29,7 @@ jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout Repository
@@ -40,41 +40,70 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: Configure Android SDK & Accept Licenses
+      - name: Configure Android SDK and Accept All Licenses
         run: |
-          # Use pre-installed Android SDK on ubuntu-latest runner
-          export ANDROID_HOME="/usr/local/lib/android/sdk"
+          set -e
+          # Detect or fallback to standard Android SDK path
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
-          
-          # Accept all SDK licenses automatically
-          mkdir -p "$ANDROID_HOME/licenses" || true
-          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license"
-          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> "$ANDROID_HOME/licenses/android-sdk-license"
-          echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
-          
-          if [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+
+          # Take ownership of the SDK directory so the runner user has write permissions without sudo
+          sudo chown -R $USER:$USER "$ANDROID_HOME" 2>/dev/null || true
+
+          # Create licenses directory
+          mkdir -p "$ANDROID_HOME/licenses"
+
+          # Write all official Android SDK license hashes (including 893fb8a... which is mandatory)
+          cat << 'EOF' > "$ANDROID_HOME/licenses/android-sdk-license"
+893fb8a22d82e1dd250cb737fb03a594c07d23ab
+24333f8a63b6825ea9c5514f83c2829b004d1fee
+d56f5187479451eabf01fb78af6dfcb131a6481e
+EOF
+
+          cat << 'EOF' > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+84831b9409646a918e30573bab4c9c91346d8abd
+EOF
+
+          cat << 'EOF' > "$ANDROID_HOME/licenses/android-sdk-arm-dbt-license"
+859f317696f67ef3d7f30a50a5560e7834b43903
+EOF
+
+          cat << 'EOF' > "$ANDROID_HOME/licenses/android-googletv-license"
+601085b94cd77f0b54ff8640695709915000853d
+EOF
+
+          cat << 'EOF' > "$ANDROID_HOME/licenses/google-gdk-license"
+33b6a2b64f07f11b2f721c9e64ee1352042297ba
+EOF
+
+          cat << 'EOF' > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
+e9acab5b5f15560a125d4f6b230374f28e000f3d
+EOF
+
+          # Run sdkmanager license acceptance with runner's JAVA_HOME
+          SDKMANAGER_BIN="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ -x "$SDKMANAGER_BIN" ]; then
+            yes | "$SDKMANAGER_BIN" --licenses || true
           fi
 
       - name: Prepare Environment and Keystore
         run: |
-          # Ensure .env file exists for Secrets Gradle plugin
+          # 1. Ensure .env file exists for Secrets Gradle plugin
           if [ -f ".env.example" ]; then
             cp .env.example .env
-          else
-            touch .env
+          fi
+          touch .env
+
+          # 2. Decode debug.keystore from base64 if available
+          if [ -f "debug.keystore.base64" ]; then
+            echo "Decoding debug.keystore from debug.keystore.base64..."
+            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore || true
           fi
 
-          # Ensure debug.keystore exists (decode from base64 or generate standard debug key)
-          if [ -f "debug.keystore.base64" ]; then
-            echo "Decoding debug.keystore from base64..."
-            base64 -d debug.keystore.base64 > debug.keystore
-          fi
-          
-          if [ ! -f "debug.keystore" ]; then
+          # 3. Fallback: generate valid debug key if file missing or empty
+          if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
             echo "Generating fallback debug keystore..."
             keytool -genkey -v -keystore debug.keystore -alias androiddebugkey \
               -keyalg RSA -keysize 2048 -validity 10000 \
@@ -85,25 +114,36 @@ jobs:
       - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x ./gradlew
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
+      - name: Build Debug APK with Gradle
+        run: ./gradlew assembleDebug --stacktrace --no-daemon --no-configuration-cache
 
       - name: Prepare APK Outputs
         run: |
           mkdir -p build-apks
-          cp app/build/outputs/apk/debug/app-debug.apk build-apks/FloatingBall-debug.apk
-          echo "Debug APK built successfully at build-apks/FloatingBall-debug.apk"
+          # Locate built APK
+          FOUND_APK=$(find app/build/outputs/apk/debug -type f -name "*.apk" | head -n 1)
+          if [ -n "$FOUND_APK" ] && [ -f "$FOUND_APK" ]; then
+            echo "Copying APK from $FOUND_APK to build-apks/FloatingBall-debug.apk"
+            cp "$FOUND_APK" build-apks/FloatingBall-debug.apk
+          else
+            echo "Searching all build outputs for apk..."
+            find . -type f -name "*.apk" -not -path "*/build-apks/*" -exec cp {} build-apks/FloatingBall-debug.apk \; -quit
+          fi
+          echo "Output directory contents:"
+          ls -lh build-apks/
 
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: FloatingBall-debug-apk
           path: build-apks/FloatingBall-debug.apk
+          if-no-files-found: error
           retention-days: 30
 
       - name: Create Release (on Tag Push)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
           files: build-apks/FloatingBall-debug.apk
           generate_release_notes: true

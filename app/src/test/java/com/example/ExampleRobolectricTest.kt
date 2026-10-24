@@ -45,6 +45,18 @@ class ExampleRobolectricTest {
     prefs.setAutoCleanActiveApp(true)
     assertTrue(prefs.getSettings().autoCleanActiveApp)
 
+    // Verify recents dismiss target defaults to "right" (user requested right card removal)
+    assertEquals("right", prefs.getSettings().recentsDismissTarget)
+
+    prefs.setRecentsDismissTarget("center")
+    assertEquals("center", prefs.getSettings().recentsDismissTarget)
+
+    prefs.setRecentsDismissTarget("both")
+    assertEquals("both", prefs.getSettings().recentsDismissTarget)
+
+    prefs.setRecentsDismissTarget("right")
+    assertEquals("right", prefs.getSettings().recentsDismissTarget)
+
     prefs.setTargetApp("com.google.android.apps.tachyon", "Google Meet (Call Switcher)", isMeet = true)
     assertTrue(prefs.getSettings().isMeetMode)
     assertEquals("com.google.android.apps.tachyon", prefs.getSettings().targetPackage)
