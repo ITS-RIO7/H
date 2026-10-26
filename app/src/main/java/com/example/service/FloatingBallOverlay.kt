@@ -328,6 +328,13 @@ class FloatingBallOverlay(
 
         // Purge BOTH apps from Recents at the exact moment of ball click
         if (settings.autoCleanActiveApp) {
+            if (!FloatingBallAccessibilityService.isServiceRunning) {
+                Toast.makeText(
+                    context,
+                    "⚠️ Accessibility permission required for Recents auto-clean!",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
             FloatingBallAccessibilityService.purgeBothAppsFromRecentsAndSwitch(
                 targetPackage = targetPkg,
                 screenWidth = screenWidth,

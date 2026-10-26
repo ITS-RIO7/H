@@ -836,7 +836,7 @@ fun ActiveAppCleanerCard(
                         }
                         Text(
                             text = if (turboSpeed)
-                                "Instant switch: 60ms delay + 45ms rapid flick (Zero lag!)"
+                                "Ultra-fast switch: 160ms recents mount + 90ms rapid fling"
                             else
                                 "Normal animation speed: Standard transition animation",
                             style = MaterialTheme.typography.bodySmall,

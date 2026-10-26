@@ -55,20 +55,12 @@ class FloatingBallAccessibilityService : AccessibilityService() {
                 return
             }
 
-            // If user is already in the target app, do not dismiss it
-            if (service.currentForegroundPackage.isNotEmpty() &&
-                service.currentForegroundPackage == targetPackage
-            ) {
-                onFinished()
-                return
-            }
-
             // 2. Open Android Recents Overview
             service.performGlobalAction(GLOBAL_ACTION_RECENTS)
 
-            // Ultra-fast timings: In Turbo mode, only wait 60ms for Recents view to mount
-            val recentsOpenDelay = if (isTurbo) 60L else 180L
-            val postDismissDelay = if (isTurbo) 0L else 50L
+            // Reliable, fast timings: 160ms in Turbo mode ensures Overview is fully mounted
+            val recentsOpenDelay = if (isTurbo) 160L else 220L
+            val postDismissDelay = if (isTurbo) 100L else 160L
 
             Handler(Looper.getMainLooper()).postDelayed({
                 service.dismissActiveAppFromRecents(screenWidth, screenHeight, targetCard, isTurbo) {
@@ -196,7 +188,7 @@ class FloatingBallAccessibilityService : AccessibilityService() {
 
     /**
      * Dismisses the active app card from Android Recents:
-     * Targets the RIGHT card by default (as requested: "right vala remove kare"),
+     * Strictly targets the RIGHT card by default (as requested: "right vala remove kare"),
      * or CENTER, or BOTH cards.
      */
     fun dismissActiveAppFromRecents(
@@ -209,49 +201,70 @@ class FloatingBallAccessibilityService : AccessibilityService() {
         val width = if (screenWidth > 0) screenWidth else 1080
         val height = if (screenHeight > 0) screenHeight else 2400
 
-        // 1. Collect all task cards that support ACTION_DISMISS
+        // 1. Collect all task cards that support ACTION_DISMISS and visual cards
         val candidates = mutableListOf<TaskCardCandidate>()
+        val visualCards = mutableListOf<Rect>()
         try {
             val root = rootInActiveWindow
             if (root != null) {
                 collectDismissableTaskCards(root, candidates)
+                collectVisualTaskCards(root, visualCards, width, height)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error searching recents nodes: ${e.message}")
         }
 
-        var rightTargetX = width * 0.80f
-        var rightTargetY = height * 0.58f
+        // Strict right-side candidate filtering (centerX MUST be > 55% of screen width)
+        val rightDismissCandidate = candidates.filter { it.bounds.centerX() > width * 0.55f }
+            .maxByOrNull { it.bounds.centerX() }
+        val rightVisualCard = visualCards.filter { it.centerX() > width * 0.55f }
+            .maxByOrNull { it.centerX() }
+
+        // Center candidate (closest to width / 2)
+        val centerCandidate = candidates.minByOrNull { kotlin.math.abs(it.bounds.centerX() - width / 2) }
+
+        var rightTargetX = width * 0.75f
+        var rightTargetY = height * 0.56f
         var centerTargetX = width * 0.50f
-        var centerTargetY = height * 0.58f
+        var centerTargetY = height * 0.56f
 
-        if (candidates.isNotEmpty()) {
-            val rightCandidate = candidates.maxByOrNull { it.bounds.centerX() }
-            val centerCandidate = candidates.minByOrNull { kotlin.math.abs(it.bounds.centerX() - width / 2) }
+        if (rightDismissCandidate != null) {
+            rightTargetX = rightDismissCandidate.bounds.centerX().toFloat()
+            rightTargetY = rightDismissCandidate.bounds.centerY().toFloat().coerceIn(height * 0.35f, height * 0.68f)
+            Log.d(TAG, "Found right dismissable node at X=$rightTargetX, Y=$rightTargetY")
+        } else if (rightVisualCard != null) {
+            rightTargetX = rightVisualCard.centerX().toFloat()
+            rightTargetY = rightVisualCard.centerY().toFloat().coerceIn(height * 0.35f, height * 0.68f)
+            Log.d(TAG, "Found right visual card at X=$rightTargetX, Y=$rightTargetY")
+        } else {
+            // Default: 75% width on right side of screen
+            rightTargetX = width * 0.75f
+            rightTargetY = height * 0.56f
+            Log.d(TAG, "Using default right target coordinates: X=$rightTargetX, Y=$rightTargetY")
+        }
 
-            if (rightCandidate != null && rightCandidate.bounds.centerX() > 0) {
-                rightTargetX = rightCandidate.bounds.centerX().toFloat()
-                rightTargetY = rightCandidate.bounds.centerY().toFloat().coerceIn(height * 0.3f, height * 0.7f)
+        if (centerCandidate != null && centerCandidate.bounds.centerX() > 0) {
+            centerTargetX = centerCandidate.bounds.centerX().toFloat()
+            centerTargetY = centerCandidate.bounds.centerY().toFloat().coerceIn(height * 0.35f, height * 0.68f)
+        }
+
+        // Trigger ACTION_DISMISS ONLY on appropriate candidates
+        when (targetCard) {
+            "right" -> {
+                if (rightDismissCandidate != null) {
+                    rightDismissCandidate.node.performAction(rightDismissCandidate.actionId)
+                    Log.d(TAG, "Triggered ACTION_DISMISS on right card")
+                }
             }
-            if (centerCandidate != null && centerCandidate.bounds.centerX() > 0) {
-                centerTargetX = centerCandidate.bounds.centerX().toFloat()
-                centerTargetY = centerCandidate.bounds.centerY().toFloat().coerceIn(height * 0.3f, height * 0.7f)
+            "center" -> {
+                if (centerCandidate != null) {
+                    centerCandidate.node.performAction(centerCandidate.actionId)
+                    Log.d(TAG, "Triggered ACTION_DISMISS on center card")
+                }
             }
-
-            when (targetCard) {
-                "right" -> {
-                    rightCandidate?.node?.performAction(rightCandidate.actionId)
-                    Log.d(TAG, "Triggered ACTION_DISMISS on right card (centerX=${rightCandidate?.bounds?.centerX()})")
-                }
-                "center" -> {
-                    centerCandidate?.node?.performAction(centerCandidate.actionId)
-                    Log.d(TAG, "Triggered ACTION_DISMISS on center card (centerX=${centerCandidate?.bounds?.centerX()})")
-                }
-                "both" -> {
-                    rightCandidate?.node?.performAction(rightCandidate.actionId)
-                    centerCandidate?.node?.performAction(centerCandidate.actionId)
-                    Log.d(TAG, "Triggered ACTION_DISMISS on both right and center cards")
-                }
+            "both" -> {
+                rightDismissCandidate?.node?.performAction(rightDismissCandidate.actionId)
+                centerCandidate?.node?.performAction(centerCandidate.actionId)
             }
         }
 
@@ -265,25 +278,25 @@ class FloatingBallAccessibilityService : AccessibilityService() {
                 "center" -> centerTargetY
                 else -> rightTargetY
             }
-            val endY = height * 0.05f
+            val endY = height * 0.04f
 
             val swipePath = Path().apply {
                 moveTo(startX, startY)
                 lineTo(startX, endY)
             }
 
-            // Rapid 45ms flick in Turbo mode (instead of 160ms)
-            val strokeDuration = if (isTurbo) 45L else 120L
+            // High-velocity 90ms stroke in Turbo mode (120ms normal)
+            val strokeDuration = if (isTurbo) 90L else 120L
             val stroke = GestureDescription.StrokeDescription(swipePath, 0, strokeDuration)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
             val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
-                    Log.d(TAG, "Recents swipe dismiss on $targetCard card completed")
+                    Log.d(TAG, "Recents swipe dismiss on $targetCard card completed at ($startX, $startY)")
                     if (targetCard == "both") {
                         Handler(Looper.getMainLooper()).postDelayed({
                             swipeCenterCard(centerTargetX, centerTargetY, height, isTurbo, onDone)
-                        }, if (isTurbo) 50L else 100L)
+                        }, if (isTurbo) 70L else 120L)
                     } else {
                         onDone()
                     }
@@ -344,6 +357,28 @@ class FloatingBallAccessibilityService : AccessibilityService() {
 
         for (i in 0 until node.childCount) {
             collectDismissableTaskCards(node.getChild(i), outList)
+        }
+    }
+
+    private fun collectVisualTaskCards(
+        node: AccessibilityNodeInfo?,
+        outBounds: MutableList<Rect>,
+        screenWidth: Int,
+        screenHeight: Int
+    ) {
+        if (node == null) return
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        if (bounds.width() >= screenWidth * 0.20f && bounds.height() >= screenHeight * 0.20f &&
+            bounds.height() < screenHeight * 0.95f) {
+            val cls = node.className?.toString() ?: ""
+            if (cls.contains("Task") || cls.contains("FrameLayout") || cls.contains("Card") ||
+                cls.contains("View") || node.isClickable) {
+                outBounds.add(bounds)
+            }
+        }
+        for (i in 0 until node.childCount) {
+            collectVisualTaskCards(node.getChild(i), outBounds, screenWidth, screenHeight)
         }
     }
 
