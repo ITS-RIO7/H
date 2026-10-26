@@ -56,31 +56,17 @@ jobs:
           mkdir -p "$ANDROID_HOME/licenses"
 
           # Write all official Android SDK license hashes (including 893fb8a... which is mandatory)
-          cat << 'EOF' > "$ANDROID_HOME/licenses/android-sdk-license"
-893fb8a22d82e1dd250cb737fb03a594c07d23ab
-24333f8a63b6825ea9c5514f83c2829b004d1fee
-d56f5187479451eabf01fb78af6dfcb131a6481e
-EOF
+          printf "%s\n" \
+            "893fb8a22d82e1dd250cb737fb03a594c07d23ab" \
+            "24333f8a63b6825ea9c5514f83c2829b004d1fee" \
+            "d56f5187479451eabf01fb78af6dfcb131a6481e" \
+            > "$ANDROID_HOME/licenses/android-sdk-license"
 
-          cat << 'EOF' > "$ANDROID_HOME/licenses/android-sdk-preview-license"
-84831b9409646a918e30573bab4c9c91346d8abd
-EOF
-
-          cat << 'EOF' > "$ANDROID_HOME/licenses/android-sdk-arm-dbt-license"
-859f317696f67ef3d7f30a50a5560e7834b43903
-EOF
-
-          cat << 'EOF' > "$ANDROID_HOME/licenses/android-googletv-license"
-601085b94cd77f0b54ff8640695709915000853d
-EOF
-
-          cat << 'EOF' > "$ANDROID_HOME/licenses/google-gdk-license"
-33b6a2b64f07f11b2f721c9e64ee1352042297ba
-EOF
-
-          cat << 'EOF' > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
-e9acab5b5f15560a125d4f6b230374f28e000f3d
-EOF
+          printf "%s\n" "84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          printf "%s\n" "859f317696f67ef3d7f30a50a5560e7834b43903" > "$ANDROID_HOME/licenses/android-sdk-arm-dbt-license"
+          printf "%s\n" "601085b94cd77f0b54ff8640695709915000853d" > "$ANDROID_HOME/licenses/android-googletv-license"
+          printf "%s\n" "33b6a2b64f07f11b2f721c9e64ee1352042297ba" > "$ANDROID_HOME/licenses/google-gdk-license"
+          printf "%s\n" "e9acab5b5f15560a125d4f6b230374f28e000f3d" > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
 
           # Run sdkmanager license acceptance with runner's JAVA_HOME
           SDKMANAGER_BIN="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
