@@ -18,6 +18,7 @@ data class BallSettings(
     val isServiceEnabled: Boolean = false,
     val autoCleanActiveApp: Boolean = true,
     val recentsDismissTarget: String = "right", // "right", "center", "both"
+    val turboSpeed: Boolean = true, // Ultra-fast switching with 60ms recents delay
     val isMeetMode: Boolean = false,
     val meetingLinkOrCode: String = ""
 )
@@ -39,6 +40,7 @@ class FloatingBallPreferences(context: Context) {
         private const val KEY_SERVICE_ENABLED = "service_enabled"
         private const val KEY_AUTO_CLEAN_ACTIVE_APP = "auto_clean_active_app"
         private const val KEY_RECENTS_DISMISS_TARGET = "recents_dismiss_target"
+        private const val KEY_TURBO_SPEED = "turbo_speed"
         private const val KEY_IS_MEET_MODE = "is_meet_mode"
         private const val KEY_MEETING_LINK = "meeting_link_or_code"
 
@@ -70,6 +72,7 @@ class FloatingBallPreferences(context: Context) {
             isServiceEnabled = prefs.getBoolean(KEY_SERVICE_ENABLED, false),
             autoCleanActiveApp = prefs.getBoolean(KEY_AUTO_CLEAN_ACTIVE_APP, true),
             recentsDismissTarget = prefs.getString(KEY_RECENTS_DISMISS_TARGET, "right") ?: "right",
+            turboSpeed = prefs.getBoolean(KEY_TURBO_SPEED, true),
             isMeetMode = prefs.getBoolean(KEY_IS_MEET_MODE, false),
             meetingLinkOrCode = prefs.getString(KEY_MEETING_LINK, "") ?: ""
         )
@@ -131,6 +134,11 @@ class FloatingBallPreferences(context: Context) {
 
     fun setRecentsDismissTarget(target: String) {
         prefs.edit().putString(KEY_RECENTS_DISMISS_TARGET, target).apply()
+        _settingsFlow.value = loadSettings()
+    }
+
+    fun setTurboSpeed(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TURBO_SPEED, enabled).apply()
         _settingsFlow.value = loadSettings()
     }
 }

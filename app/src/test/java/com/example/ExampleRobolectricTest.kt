@@ -57,6 +57,13 @@ class ExampleRobolectricTest {
     prefs.setRecentsDismissTarget("right")
     assertEquals("right", prefs.getSettings().recentsDismissTarget)
 
+    // Verify turbo speed defaults to true (ultra-fast switching)
+    assertTrue(prefs.getSettings().turboSpeed)
+    prefs.setTurboSpeed(false)
+    assertFalse(prefs.getSettings().turboSpeed)
+    prefs.setTurboSpeed(true)
+    assertTrue(prefs.getSettings().turboSpeed)
+
     prefs.setTargetApp("com.google.android.apps.tachyon", "Google Meet (Call Switcher)", isMeet = true)
     assertTrue(prefs.getSettings().isMeetMode)
     assertEquals("com.google.android.apps.tachyon", prefs.getSettings().targetPackage)

@@ -42,6 +42,7 @@ class FloatingBallAccessibilityService : AccessibilityService() {
             screenWidth: Int,
             screenHeight: Int,
             targetCard: String = "right",
+            isTurbo: Boolean = true,
             onFinished: () -> Unit
         ) {
             // 1. Immediately purge Floating Ball launcher itself from Recents
@@ -65,33 +66,45 @@ class FloatingBallAccessibilityService : AccessibilityService() {
             // 2. Open Android Recents Overview
             service.performGlobalAction(GLOBAL_ACTION_RECENTS)
 
-            // Wait 350ms for Recents card view to fully animate and become interactive
+            // Ultra-fast timings: In Turbo mode, only wait 60ms for Recents view to mount
+            val recentsOpenDelay = if (isTurbo) 60L else 180L
+            val postDismissDelay = if (isTurbo) 0L else 50L
+
             Handler(Looper.getMainLooper()).postDelayed({
-                service.dismissActiveAppFromRecents(screenWidth, screenHeight, targetCard) {
-                    // Wait 180ms after card dismissal completes, then launch Google Meet / Target app
-                    Handler(Looper.getMainLooper()).postDelayed({
+                service.dismissActiveAppFromRecents(screenWidth, screenHeight, targetCard, isTurbo) {
+                    if (postDismissDelay > 0L) {
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            onFinished()
+                        }, postDismissDelay)
+                    } else {
                         onFinished()
-                    }, 180)
+                    }
                 }
-            }, 350)
+            }, recentsOpenDelay)
         }
 
         /**
          * Arm auto-click for Google Meet call or rejoin button.
-         * Runs continuous periodic checks for 4 seconds to catch the button as soon as it appears.
+         * Runs instant and continuous periodic checks starting at 0ms.
          */
         fun armAutoClickForMeetCall() {
             shouldAutoClickCall = true
             val service = instance ?: return
 
-            // Continuous polling every 150ms for up to 4 seconds
+            // Instant check right now
+            service.tryAutoClickCallButton()
+
             val handler = Handler(Looper.getMainLooper())
-            for (delay in 100..4000 step 150) {
+            val delays = listOf(
+                20L, 45L, 75L, 110L, 150L, 200L, 260L, 330L, 420L, 520L, 650L,
+                800L, 1000L, 1300L, 1700L, 2200L, 2800L, 3500L, 4200L
+            )
+            for (delay in delays) {
                 handler.postDelayed({
                     if (shouldAutoClickCall) {
                         service.tryAutoClickCallButton()
                     }
-                }, delay.toLong())
+                }, delay)
             }
 
             // Disarm after 4.5 seconds timeout
@@ -190,6 +203,7 @@ class FloatingBallAccessibilityService : AccessibilityService() {
         screenWidth: Int,
         screenHeight: Int,
         targetCard: String = "right",
+        isTurbo: Boolean = true,
         onDone: () -> Unit
     ) {
         val width = if (screenWidth > 0) screenWidth else 1080
@@ -258,7 +272,9 @@ class FloatingBallAccessibilityService : AccessibilityService() {
                 lineTo(startX, endY)
             }
 
-            val stroke = GestureDescription.StrokeDescription(swipePath, 0, 160)
+            // Rapid 45ms flick in Turbo mode (instead of 160ms)
+            val strokeDuration = if (isTurbo) 45L else 120L
+            val stroke = GestureDescription.StrokeDescription(swipePath, 0, strokeDuration)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
             val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
@@ -266,8 +282,8 @@ class FloatingBallAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Recents swipe dismiss on $targetCard card completed")
                     if (targetCard == "both") {
                         Handler(Looper.getMainLooper()).postDelayed({
-                            swipeCenterCard(centerTargetX, centerTargetY, height, onDone)
-                        }, 120)
+                            swipeCenterCard(centerTargetX, centerTargetY, height, isTurbo, onDone)
+                        }, if (isTurbo) 50L else 100L)
                     } else {
                         onDone()
                     }
@@ -291,6 +307,7 @@ class FloatingBallAccessibilityService : AccessibilityService() {
         startX: Float,
         startY: Float,
         screenHeight: Int,
+        isTurbo: Boolean = true,
         onDone: () -> Unit
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -298,7 +315,8 @@ class FloatingBallAccessibilityService : AccessibilityService() {
                 moveTo(startX, startY)
                 lineTo(startX, screenHeight * 0.05f)
             }
-            val stroke = GestureDescription.StrokeDescription(swipePath, 0, 160)
+            val strokeDuration = if (isTurbo) 45L else 120L
+            val stroke = GestureDescription.StrokeDescription(swipePath, 0, strokeDuration)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
             dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) { onDone() }

@@ -302,13 +302,13 @@ class FloatingBallOverlay(
         val settings = prefs.getSettings()
         vibrateFeedback()
 
-        // Visual click ripple / bounce
+        // Snappy visual click ripple / bounce
         ballView?.animate()
-            ?.scaleX(1.25f)
-            ?.scaleY(1.25f)
-            ?.setDuration(120)
+            ?.scaleX(1.18f)
+            ?.scaleY(1.18f)
+            ?.setDuration(50)
             ?.withEndAction {
-                ballView?.animate()?.scaleX(1.0f)?.scaleY(1.0f)?.setDuration(120)?.start()
+                ballView?.animate()?.scaleX(1.0f)?.scaleY(1.0f)?.setDuration(50)?.start()
             }
             ?.start()
 
@@ -332,7 +332,8 @@ class FloatingBallOverlay(
                 targetPackage = targetPkg,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,
-                targetCard = settings.recentsDismissTarget
+                targetCard = settings.recentsDismissTarget,
+                isTurbo = settings.turboSpeed
             ) {
                 executeLaunch(targetPkg, settings)
             }
@@ -398,13 +399,16 @@ class FloatingBallOverlay(
                 )
                 context.startActivity(launchIntent)
 
-                // Schedule auto-clicks for Google Meet ongoing call buttons
+                // Schedule instant auto-clicks for Google Meet ongoing call buttons
                 if (isMeet) {
                     val handler = android.os.Handler(android.os.Looper.getMainLooper())
-                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 200)
-                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 500)
-                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 900)
-                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 1400)
+                    handler.post { FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }
+                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 30)
+                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 80)
+                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 160)
+                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 300)
+                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 600)
+                    handler.postDelayed({ FloatingBallAccessibilityService.instance?.tryAutoClickCallButton() }, 1100)
                 }
 
                 // If user enabled auto-hide / close ball upon launch

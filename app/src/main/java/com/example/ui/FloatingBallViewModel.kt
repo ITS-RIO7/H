@@ -270,6 +270,13 @@ class FloatingBallViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    fun updateTurboSpeed(enabled: Boolean) {
+        preferences.setTurboSpeed(enabled)
+        if (preferences.getSettings().isServiceEnabled) {
+            FloatingBallService.updateConfig(getApplication())
+        }
+    }
+
     fun updateMeetingLinkOrCode(link: String) {
         preferences.setMeetingLinkOrCode(link)
         if (preferences.getSettings().isServiceEnabled) {

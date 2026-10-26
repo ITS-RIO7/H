@@ -283,9 +283,11 @@ fun FloatingBallScreen(
                 ActiveAppCleanerCard(
                     autoClean = settings.autoCleanActiveApp,
                     recentsDismissTarget = settings.recentsDismissTarget,
+                    turboSpeed = settings.turboSpeed,
                     isAccessibilityEnabled = isAccessibilityEnabled,
                     onToggleAutoClean = { viewModel.updateAutoCleanActiveApp(it) },
                     onSelectDismissTarget = { viewModel.updateRecentsDismissTarget(it) },
+                    onToggleTurboSpeed = { viewModel.updateTurboSpeed(it) },
                     onOpenAccessibility = { viewModel.openAccessibilitySettings(context) }
                 )
             }
@@ -668,9 +670,11 @@ fun GoogleMeetSwitcherCard(
 fun ActiveAppCleanerCard(
     autoClean: Boolean,
     recentsDismissTarget: String = "right",
+    turboSpeed: Boolean = true,
     isAccessibilityEnabled: Boolean,
     onToggleAutoClean: (Boolean) -> Unit,
     onSelectDismissTarget: (String) -> Unit = {},
+    onToggleTurboSpeed: (Boolean) -> Unit = {},
     onOpenAccessibility: () -> Unit
 ) {
     Card(
@@ -803,6 +807,52 @@ fun ActiveAppCleanerCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                 )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Turbo Fast Switching Speed Toggle
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (turboSpeed) EmeraldActive.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                border = BorderStroke(1.dp, if (turboSpeed) EmeraldActive.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("⚡", fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Turbo Speed Mode (Ultra Fast)",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = if (turboSpeed) EmeraldActive else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Text(
+                            text = if (turboSpeed)
+                                "Instant switch: 60ms delay + 45ms rapid flick (Zero lag!)"
+                            else
+                                "Normal animation speed: Standard transition animation",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = turboSpeed,
+                        onCheckedChange = onToggleTurboSpeed,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = EmeraldActive,
+                            checkedTrackColor = EmeraldActive.copy(alpha = 0.4f)
+                        )
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
