@@ -43,6 +43,7 @@ class FloatingBallAccessibilityService : AccessibilityService() {
             screenHeight: Int,
             targetCard: String = "right",
             isTurbo: Boolean = true,
+            isMeetMode: Boolean = false,
             onFinished: () -> Unit
         ) {
             // 1. Immediately purge Floating Ball launcher itself from Recents
@@ -63,13 +64,25 @@ class FloatingBallAccessibilityService : AccessibilityService() {
             val postDismissDelay = if (isTurbo) 100L else 160L
 
             Handler(Looper.getMainLooper()).postDelayed({
-                service.dismissActiveAppFromRecents(screenWidth, screenHeight, targetCard, isTurbo) {
-                    if (postDismissDelay > 0L) {
-                        Handler(Looper.getMainLooper()).postDelayed({
+                if (isMeetMode) {
+                    service.clearAllExceptMeetAndCallFromRecents(screenWidth, screenHeight, isTurbo) {
+                        if (postDismissDelay > 0L) {
+                            Handler(Looper.getMainLooper()).postDelayed({
+                                onFinished()
+                            }, postDismissDelay)
+                        } else {
                             onFinished()
-                        }, postDismissDelay)
-                    } else {
-                        onFinished()
+                        }
+                    }
+                } else {
+                    service.dismissActiveAppFromRecents(screenWidth, screenHeight, targetCard, isTurbo) {
+                        if (postDismissDelay > 0L) {
+                            Handler(Looper.getMainLooper()).postDelayed({
+                                onFinished()
+                            }, postDismissDelay)
+                        } else {
+                            onFinished()
+                        }
                     }
                 }
             }, recentsOpenDelay)
@@ -183,8 +196,134 @@ class FloatingBallAccessibilityService : AccessibilityService() {
     private data class TaskCardCandidate(
         val node: AccessibilityNodeInfo,
         val bounds: Rect,
-        val actionId: Int
+        val actionId: Int,
+        val isMeetOrCall: Boolean = false
     )
+
+    private data class VisualCardInfo(
+        val bounds: Rect,
+        val isMeetOrCall: Boolean,
+        val title: String
+    )
+
+    /**
+     * Clears ALL app cards from Android Recents EXCEPT Google Meet and active Call.
+     * Preserves Google Meet and ongoing Call cards intact.
+     */
+    fun clearAllExceptMeetAndCallFromRecents(
+        screenWidth: Int,
+        screenHeight: Int,
+        isTurbo: Boolean = true,
+        onDone: () -> Unit
+    ) {
+        val width = if (screenWidth > 0) screenWidth else 1080
+        val height = if (screenHeight > 0) screenHeight else 2400
+
+        val candidates = mutableListOf<TaskCardCandidate>()
+        val visualCards = mutableListOf<VisualCardInfo>()
+        val meetCallBounds = mutableListOf<Rect>()
+
+        try {
+            val root = rootInActiveWindow
+            if (root != null) {
+                collectAllTaskCardsWithDetails(root, candidates, visualCards, meetCallBounds, width, height)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error searching recents nodes: ${e.message}")
+        }
+
+        // 1. Accessibility Dismiss: Dismiss all cards with ACTION_DISMISS that are NOT Meet/Call
+        var dismissedViaActionCount = 0
+        for (candidate in candidates) {
+            if (!candidate.isMeetOrCall) {
+                candidate.node.performAction(candidate.actionId)
+                dismissedViaActionCount++
+                Log.d(TAG, "Dismissed non-Meet task via ACTION_DISMISS at centerX=${candidate.bounds.centerX()}")
+            } else {
+                Log.d(TAG, "Preserving Meet/Call card at centerX=${candidate.bounds.centerX()}")
+            }
+        }
+
+        // 2. Gesture Dismiss Swipes: For OEM launchers without ACTION_DISMISS, swipe non-Meet cards
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val isMeetOnRight = meetCallBounds.any { it.centerX() > width * 0.58f }
+            val isMeetOnCenter = meetCallBounds.any { kotlin.math.abs(it.centerX() - width / 2) <= width * 0.15f }
+
+            val targetsToSwipe = mutableListOf<Float>()
+
+            // If Meet is not on the right, swipe right card
+            if (!isMeetOnRight) {
+                targetsToSwipe.add(width * 0.75f)
+            }
+            // If Meet is not in the center, swipe center card
+            if (!isMeetOnCenter) {
+                targetsToSwipe.add(width * 0.50f)
+            }
+
+            if (targetsToSwipe.isEmpty()) {
+                // Only Meet/Call is visible in Recents
+                Log.d(TAG, "Only Meet/Call present in recents, preserving it")
+                onDone()
+                return
+            }
+
+            executeSequentialSwipes(targetsToSwipe, height, isTurbo, onDone)
+        } else {
+            onDone()
+        }
+    }
+
+    private fun executeSequentialSwipes(
+        targetXs: List<Float>,
+        screenHeight: Int,
+        isTurbo: Boolean,
+        onDone: () -> Unit
+    ) {
+        if (targetXs.isEmpty()) {
+            onDone()
+            return
+        }
+
+        val strokeDuration = if (isTurbo) 85L else 115L
+        val intervalDelay = if (isTurbo) 60L else 100L
+        val startY = screenHeight * 0.56f
+        val endY = screenHeight * 0.04f
+
+        fun swipeAt(index: Int) {
+            if (index >= targetXs.size) {
+                onDone()
+                return
+            }
+
+            val targetX = targetXs[index]
+            val path = Path().apply {
+                moveTo(targetX, startY)
+                lineTo(targetX, endY)
+            }
+            val stroke = GestureDescription.StrokeDescription(path, 0, strokeDuration)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+            dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    Log.d(TAG, "Swipe dismissed non-Meet card at X=$targetX (${index + 1}/${targetXs.size})")
+                    if (index + 1 < targetXs.size) {
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            swipeAt(index + 1)
+                        }, intervalDelay)
+                    } else {
+                        onDone()
+                    }
+                }
+
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    Log.d(TAG, "Swipe dismiss cancelled at X=$targetX")
+                    onDone()
+                }
+            }, null)
+        }
+
+        swipeAt(0)
+    }
 
     /**
      * Dismisses the active app card from Android Recents:
@@ -379,6 +518,81 @@ class FloatingBallAccessibilityService : AccessibilityService() {
         }
         for (i in 0 until node.childCount) {
             collectVisualTaskCards(node.getChild(i), outBounds, screenWidth, screenHeight)
+        }
+    }
+
+    private fun isMeetOrCallNode(node: AccessibilityNodeInfo): Boolean {
+        val text = node.text?.toString()?.lowercase() ?: ""
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        val viewId = node.viewIdResourceName?.toString()?.lowercase() ?: ""
+        val pkg = node.packageName?.toString()?.lowercase() ?: ""
+
+        val keywords = listOf(
+            "meet", "tachyon", "meetings", "call", "calling", "ongoing",
+            "in call", "rejoin", "return to call", "phone", "dialer", "incall",
+            "कॉल", "मीटिंग", "पुनः जुड़ें", "शामिल हों"
+        )
+
+        if (keywords.any { text.contains(it) || desc.contains(it) || viewId.contains(it) || pkg.contains(it) }) {
+            return true
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val childText = child.text?.toString()?.lowercase() ?: ""
+            val childDesc = child.contentDescription?.toString()?.lowercase() ?: ""
+            val childViewId = child.viewIdResourceName?.toString()?.lowercase() ?: ""
+            if (keywords.any { childText.contains(it) || childDesc.contains(it) || childViewId.contains(it) }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun collectAllTaskCardsWithDetails(
+        node: AccessibilityNodeInfo?,
+        outCandidates: MutableList<TaskCardCandidate>,
+        outVisualCards: MutableList<VisualCardInfo>,
+        outMeetCallBounds: MutableList<Rect>,
+        screenWidth: Int,
+        screenHeight: Int
+    ) {
+        if (node == null) return
+
+        val isMeet = isMeetOrCallNode(node)
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+
+        if (isMeet && bounds.width() > screenWidth * 0.15f && bounds.height() > screenHeight * 0.15f) {
+            outMeetCallBounds.add(bounds)
+        }
+
+        for (action in node.actionList) {
+            if (action.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS.id) {
+                outCandidates.add(TaskCardCandidate(node, bounds, action.id, isMeet))
+                break
+            }
+        }
+
+        if (bounds.width() >= screenWidth * 0.20f && bounds.height() >= screenHeight * 0.20f &&
+            bounds.height() < screenHeight * 0.95f) {
+            val cls = node.className?.toString() ?: ""
+            if (cls.contains("Task") || cls.contains("FrameLayout") || cls.contains("Card") ||
+                cls.contains("View") || node.isClickable) {
+                val title = node.contentDescription?.toString() ?: node.text?.toString() ?: ""
+                outVisualCards.add(VisualCardInfo(bounds, isMeet, title))
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            collectAllTaskCardsWithDetails(
+                node.getChild(i),
+                outCandidates,
+                outVisualCards,
+                outMeetCallBounds,
+                screenWidth,
+                screenHeight
+            )
         }
     }
 

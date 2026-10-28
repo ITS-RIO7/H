@@ -326,6 +326,12 @@ class FloatingBallOverlay(
             return
         }
 
+        val isMeet = settings.isMeetMode ||
+                targetPkg == "com.google.android.apps.tachyon" ||
+                targetPkg == "com.google.android.apps.meetings" ||
+                targetPkg.contains("tachyon") ||
+                targetPkg.contains("meetings")
+
         // Purge BOTH apps from Recents at the exact moment of ball click
         if (settings.autoCleanActiveApp) {
             if (!FloatingBallAccessibilityService.isServiceRunning) {
@@ -340,7 +346,8 @@ class FloatingBallOverlay(
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,
                 targetCard = settings.recentsDismissTarget,
-                isTurbo = settings.turboSpeed
+                isTurbo = settings.turboSpeed,
+                isMeetMode = isMeet
             ) {
                 executeLaunch(targetPkg, settings)
             }

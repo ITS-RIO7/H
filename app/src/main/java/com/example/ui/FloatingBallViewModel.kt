@@ -149,8 +149,13 @@ class FloatingBallViewModel(application: Application) : AndroidViewModel(applica
 
     fun selectTargetApp(app: AppInfo, autoStart: Boolean = true, isMeet: Boolean = false) {
         val context = getApplication<Application>()
-        val displayName = if (isMeet) "Google Meet (Ongoing Call Switcher)" else app.appName
-        preferences.setTargetApp(app.packageName, displayName, isMeet = isMeet)
+        val isActuallyMeet = isMeet ||
+                app.packageName == "com.google.android.apps.tachyon" ||
+                app.packageName == "com.google.android.apps.meetings" ||
+                app.packageName.contains("tachyon") ||
+                app.appName.contains("Meet", ignoreCase = true)
+        val displayName = if (isActuallyMeet) "Google Meet (Ongoing Call Switcher)" else app.appName
+        preferences.setTargetApp(app.packageName, displayName, isMeet = isActuallyMeet)
 
         if (preferences.getSettings().isServiceEnabled) {
             FloatingBallService.updateConfig(context)

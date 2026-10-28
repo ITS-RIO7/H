@@ -606,6 +606,29 @@ fun GoogleMeetSwitcherCard(
                 }
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = CyberPurple.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, CyberPurple.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🧹", fontSize = 16.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Smart Recents Cleaner: Meet select hone par Floating Ball tap karte hi Meet aur Ongoing Call ko chhodkar baaki sabhi apps Recents se automatically clear ho jayenge.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
             // Optional direct meeting code or link
